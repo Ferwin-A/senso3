@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IoT Dashboard - Temperatura & Cargas</title>
+
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com"></script>
+
+<!-- Lucide Icons -->
+<script src="https://unpkg.com/lucide@latest"></script>
+
+<!-- SweetAlert2 -->
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+  body {
+    background: linear-gradient(to bottom, #0f172a, #1e293b);
+    color: #f1f5f9;
+    font-family: 'Inter', sans-serif;
+  }
+  .glass-panel {
+    background: rgba(30,41,59,0.7);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+  .glow-on {
+    box-shadow: 0 0 20px #fbbf24; 
+    border-color: #fbbf24;
+  }
+</style>
+</head>
+<body class="min-h-screen">
+
+<!-- Contenedor Principal -->
+<div class="max-w-6xl mx-auto p-4">
+
+  <!-- Header -->
+  <header class="flex justify-between items-center mb-6">
+    <h1 class="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-400">
+      IoT Dashboard
+    </h1>
+    <button onclick="openConfig()" class="p-2 rounded-full bg-slate-800 hover:bg-slate-700 transition border border-slate-600">
+      <i data-lucide="settings" class="w-6 h-6 text-slate-300"></i>
+    </button>
+  </header>
+
+  <!-- Estado de conexión -->
+  <div id="statusIndicator" class="mb-6 flex items-center gap-3 bg-red-500/10 border border-red-500/20 p-3 rounded-lg">
+    <span class="relative flex h-3 w-3">
+      <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+      <span class="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+    </span>
+    <span class="text-sm font-medium text-red-400">Desconectado de la Nube</span>
+  </div>
+
+  <!-- Sensores -->
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+    <div class="glass-panel p-6 rounded-2xl">
+      <h2 class="text-xl font-semibold mb-2">Sensor 1</h2>
+      <p id="t1" class="text-3xl font-bold">-- °C</p>
+    </div>
+    <div class="glass-panel p-6 rounded-2xl">
+      <h2 class="text-xl font-semibold mb-2">Sensor 2</h2>
+      <p id="t2" class="text-3xl font-bold">-- °C</p>
+    </div>
+    <div class="glass-panel p-6 rounded-2xl">
+      <h2 class="text-xl font-semibold mb-2">Sensor 3</h2>
+      <p id="t3" class="text-3xl font-bold">-- °C</p>
+    </div>
+    <div class="glass-panel p-6 rounded-2xl">
+      <h2 class="text-xl font-semibold mb-2">Sensor 4</h2>
+      <p id="t4" class="text-3xl font-bold">-- °C</p>
+    </div>
+    <div class="glass-panel p-6 rounded-2xl col-span-1 md:col-span-2 lg:col-span-1">
+      <h2 class="text-xl font-semibold mb-2">Promedio</h2>
+      <p id="promedio" class="text-4xl font-bold">-- °C</p>
+    </div>
+  </div>
+
+  <!-- Gráfica de temperaturas -->
+  <div class="glass-panel p-6 rounded-2xl mb-8">
+    <canvas id="chartTemp" height="150"></canvas>
+  </div>
+
+  <!-- Cargas: Ventilador / Calefactor -->
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <div class="glass-panel p-6 rounded-2xl">
+      <h2 class="text-xl font-semibold mb-2">Ventilador</h2>
+      <p id="ventiladorStatus" class="text-3xl font-bold">--</p>
+      <button onclick="toggleManual('ventilador')" class="mt-4 w-full bg-blue-600 hover:bg-blue-500 py-3 rounded-xl font-bold">Cambiar Estado</button>
+    </div>
+    <div class="glass-panel p-6 rounded-2xl">
+      <h2 class="text-xl font-semibold mb-2">Calefactor</h2>
+      <p id="calefactorStatus" class="text-3xl font-bold">--</p>
+      <button onclick="toggleManual('calefactor')" class="mt-4 w-full bg-orange-600 hover:bg-orange-500 py-3 rounded-xl font-bold">Cambiar Estado</button>
+    </div>
+  </div>
+
+  <!-- Modo Auto/Manual -->
+  <div class="glass-panel p-6 rounded-2xl mt-6 text-center">
+    <h2 class="text-xl font-semibold mb-2">Modo Operación</h2>
+    <p id="modeStatus" class="text-2xl font-bold mb-4">--</p>
+    <button onclick="changeMode()" class="bg-green-600 hover:bg-green-500 py-3 px-6 rounded-xl font-bold">Cambiar Modo</button>
+  </div>
+
+</div>
+
+<!-- Modal de Configuración Firebase -->
+<div id="configModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm hidden">
+  <div class="bg-slate-900 border border-slate-700 p-6 rounded-2xl w-11/12 max-w-md shadow-2xl">
+    <h3 class="text-xl font-bold mb-4 flex items-center gap-2">
+      <i data-lucide="database" class="w-5 h-5 text-blue-400"></i>
+      Configuración Firebase
+    </h3>
+    <p class="text-sm text-slate-400 mb-4">Ingresa las credenciales de tu proyecto Firebase Realtime Database.</p>
+    
+    <div class="space-y-4">
+      <div>
+        <label class="block text-xs font-bold text-slate-500 mb-1">API KEY</label>
+        <input type="text" id="apiKeyInput" placeholder="AIzaSy..." class="w-full bg-slate-800 border border-slate-600 rounded-lg p-3 text-sm text-white">
+      </div>
+      <div>
+        <label class="block text-xs font-bold text-slate-500 mb-1">DATABASE URL</label>
+        <input type="text" id="dbUrlInput" placeholder="https://proyecto.firebaseio.com" class="w-full bg-slate-800 border border-slate-600 rounded-lg p-3 text-sm text-white">
+      </div>
+    </div>
+
+    <div class="mt-6 flex gap-3">
+      <button onclick="closeConfig()" class="flex-1 py-3 text-slate-400 hover:text-white transition">Cancelar</button>
+      <button onclick="saveConfig()" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl">Guardar y Conectar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Firebase SDK -->
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
+let app, db;
+let tempsHistory = [];
+
+// Modal Firebase
+window.openConfig = () => document.getElementById('configModal').classList.remove('hidden');
+window.closeConfig = () => document.getElementById('configModal').classList.add('hidden');
+
+window.saveConfig = () => {
+  const apiKey = document.getElementById('apiKeyInput').value.trim();
+  const dbUrl = document.getElementById('dbUrlInput').value.trim();
+  if(!apiKey || !dbUrl) return Swal.fire('Error','Faltan datos','error');
+  localStorage.setItem('iot_api_key', apiKey);
+  localStorage.setItem('iot_db_url', dbUrl);
+  initFirebase(apiKey, dbUrl);
+  closeConfig();
+};
+
+const chartCtx = document.getElementById('chartTemp').getContext('2d');
+const chart = new Chart(chartCtx, {
+  type: 'line',
+  data: {
+    labels: [],
+    datasets: [
+      { label:'Sensor1', data:[], borderColor:'#facc15', tension:0.3 },
+      { label:'Sensor2', data:[], borderColor:'#3b82f6', tension:0.3 },
+      { label:'Sensor3', data:[], borderColor:'#10b981', tension:0.3 },
+      { label:'Sensor4', data:[], borderColor:'#f43f5e', tension:0.3 },
+      { label:'Promedio', data:[], borderColor:'#8b5cf6', tension:0.3, borderWidth:2 }
+    ]
+  },
+  options: { responsive:true, animation:false, plugins:{legend:{labels:{color:'#fff'}}}, scales:{y:{ticks:{color:'#fff'}}, x:{ticks:{color:'#fff'}}} }
+});
+
+function initFirebase(apiKey,databaseURL){
+  try{
+    const firebaseConfig = { apiKey, databaseURL };
+    app = initializeApp(firebaseConfig);
+    db = getDatabase(app);
+    const sensoresRef = ref(db,'/sensores');
+    const cargasRef = ref(db,'/cargas');
+    
+    // Escuchar sensores
+    onValue(sensoresRef, (snapshot)=>{
+      const data = snapshot.val();
+      if(!data) return;
+      ['t1','t2','t3','t4','promedio'].forEach(k=>{
+        if(data[k]!==undefined) document.getElementById(k).innerText = data[k].toFixed(2)+' °C';
+      });
+
+      // Actualizar gráfica
+      tempsHistory.push([data.t1||0,data.t2||0,data.t3||0,data.t4||0,data.promedio||0]);
+      if(tempsHistory.length>20) tempsHistory.shift();
+      chart.data.labels = tempsHistory.map((_,i)=>i+1);
+      chart.data.datasets.forEach((ds,idx)=>{
+        ds.data = tempsHistory.map(arr=>arr[idx]);
+      });
+      chart.update();
+    });
+
+    // Escuchar cargas
+    onValue(cargasRef,(snapshot)=>{
+      const data = snapshot.val();
+      if(!data) return;
+      document.getElementById('ventiladorStatus').innerText = data.ventilador ? 'ON' : 'OFF';
+      document.getElementById('calefactorStatus').innerText = data.calefactor ? 'ON' : 'OFF';
+      document.getElementById('modeStatus').innerText = data.mode ? data.mode.toUpperCase() : 'AUTO';
+      updateStatusUI(true);
+    });
+
+  } catch(e){
+    console.error(e);
+    Swal.fire('Error','Credenciales inválidas','error');
+    updateStatusUI(false);
+  }
+}
+
+// Contraseña para manual/mode
+function toggleManual(carga){
+  Swal.fire({
+    title:'Ingresa contraseña',
+    input:'password',
+    inputPlaceholder:'Contraseña',
+    inputAttributes:{maxlength:10, autocapitalize:'off', autocorrect:'off'},
+    showCancelButton:true,
+    preConfirm: (password) => {
+      if(password !== '2005'){
+        Swal.showValidationMessage('Contraseña incorrecta');
+      }
+      return password;
+    }
+  }).then((result)=>{
+    if(result.isConfirmed){
+      const path = '/cargas/'+carga;
+      const current = document.getElementById(carga+'Status').innerText==='ON';
+      set(ref(db,path),!current);
+    }
+  });
+}
+
+function changeMode(){
+  Swal.fire({
+    title:'Ingresa contraseña',
+    input:'password',
+    inputPlaceholder:'Contraseña',
+    inputAttributes:{maxlength:10, autocapitalize:'off', autocorrect:'off'},
+    showCancelButton:true,
+    preConfirm: (password) => {
+      if(password !== '2005'){
+        Swal.showValidationMessage('Contraseña incorrecta');
+      }
+      return password;
+    }
+  }).then((result)=>{
+    if(result.isConfirmed){
+      const current = document.getElementById('modeStatus').innerText.toLowerCase();
+      const newMode = current==='auto' ? 'manual' : 'auto';
+      set(ref(db,'/cargas/mode'),newMode);
+    }
+  });
+}
+
+function updateStatusUI(connected){
+  const el = document.getElementById('statusIndicator');
+  if(connected){
+    el.className="mb-6 flex items-center gap-3 bg-emerald-500/10 border border-emerald-500/20 p-3 rounded-lg";
+    el.innerHTML='<span class="relative flex h-3 w-3"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span><span class="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span></span><span class="text-sm font-medium text-emerald-400">Conectado a Firebase</span>';
+  } else{
+    el.className="mb-6 flex items-center gap-3 bg-red-500/10 border border-red-500/20 p-3 rounded-lg";
+    el.innerHTML='<span class="h-3 w-3 rounded-full bg-red-500"></span><span class="text-sm font-medium text-red-400">Desconectado</span>';
+  }
+}
+
+// Cargar config guardada
+const savedKey = localStorage.getItem('iot_api_key');
+const savedUrl = localStorage.getItem('iot_db_url');
+if(savedKey && savedUrl){
+  document.getElementById('apiKeyInput').value = savedKey;
+  document.getElementById('dbUrlInput').value = savedUrl;
+  initFirebase(savedKey,savedUrl);
+} else setTimeout(openConfig,500);
+
+lucide.createIcons();
+</script>
+</body>
+</html>
